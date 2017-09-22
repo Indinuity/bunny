@@ -292,7 +292,16 @@ class Client extends AbstractClient
      */
     public function onDataAvailable()
     {
-        $this->read();
+	    try
+	    {
+		    $this->read();
+	    }
+	    catch(ClientException $e)
+	    {
+		    $this->reconnect($e);
+		    // recusion
+		    return $this->onDataAvailable();
+	    }
 
         while (($frame = $this->reader->consumeFrame($this->readBuffer)) !== null) {
             foreach ($this->awaitCallbacks as $k => $callback) {
@@ -335,5 +344,19 @@ class Client extends AbstractClient
             $this->heartbeatTimer = $this->eventLoop->addTimer($nextHeartbeat - $now, [$this, "onHeartbeat"]);
         }
     }
+
+	protected function reconnect(ClientException $e)
+	{
+		static $reconnect = 0;
+		if($reconnect > 99)
+		{
+			throw $e;
+		}
+
+		// reconnet
+		$this->state = ClientStateEnum::NOT_CONNECTED;
+		$this->connect();
+		$reconnect++;
+	}
 
 }

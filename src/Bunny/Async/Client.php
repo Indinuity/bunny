@@ -155,25 +155,40 @@ class Client extends AbstractClient
             $deferred = new Promise\Deferred();
 
             $this->eventLoop->addWriteStream($this->getStream(), function ($stream) use ($deferred) {
-                try {
-                    $this->write();
-
-                    if ($this->writeBuffer->isEmpty()) {
-                        $this->eventLoop->removeWriteStream($stream);
-                        $this->flushWriteBufferPromise = null;
-                        $deferred->resolve(true);
-                    }
-
-                } catch (\Exception $e) {
-                    $this->eventLoop->removeWriteStream($stream);
-                    $this->flushWriteBufferPromise = null;
-                    $deferred->reject($e);
-                }
+                $this->onWriteStream($stream, $deferred);
             });
 
             return $this->flushWriteBufferPromise = $deferred->promise();
         }
     }
+
+	public function onWriteStream($stream, $deferred)
+	{
+		try {
+			try
+			{
+				$this->write();
+			}
+			catch(ClientException $e)
+			{
+				$this->reconnect($e);
+				// recusion
+				return $this->onWriteStream($stream, $deferred);
+			}
+
+
+			if ($this->writeBuffer->isEmpty()) {
+				$this->eventLoop->removeWriteStream($stream);
+				$this->flushWriteBufferPromise = null;
+				$deferred->resolve(true);
+			}
+
+		} catch (\Exception $e) {
+			$this->eventLoop->removeWriteStream($stream);
+			$this->flushWriteBufferPromise = null;
+			$deferred->reject($e);
+		}
+	}
 
     /**
      * Connects to AMQP server.
